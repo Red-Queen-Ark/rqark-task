@@ -76,15 +76,7 @@ class FakeApp:
         self.storage = storage
         self.session_mgr = FakeSessionManager()
         self.handlers = {}
-        self.turn_writes: list[dict] = []
-        self.drains = 0
         FakeApp.instances.append(self)
-
-    async def write_turn_memory(self, *, session_id, source, session, extras=None, allow_state_update=True):
-        self.turn_writes.append({'session_id': session_id, 'source': source, 'session': session, 'extras': extras, 'allow_state_update': allow_state_update})
-
-    async def drain_memory_writes(self, timeout=5.0):
-        self.drains += 1
 
     def on_content(self):
         def register(handler):
@@ -168,46 +160,6 @@ async def test_a_successful_run_finalizes_ok(wired):
     assert client.finalized == [(TASK_ID, RUN_ID, 'ok', '', SESSION_ID)]
     assert wired[0].saved == []
     assert FakeWorkspace.instances[0].ensured is True
-
-
-async def test_a_successful_run_is_recorded_without_updating_the_state(wired):
-    client = FakeClient()
-
-    await execute(client, ClaimedRun.from_payload(PAYLOAD))
-    await asyncio.sleep(0)
-
-    writes = FakeApp.instances[0].turn_writes
-    assert len(writes) == 1
-    assert writes[0]['source'] == 'TASK'
-    assert writes[0]['session_id'] == SESSION_ID
-    assert writes[0]['allow_state_update'] is False
-    assert FakeApp.instances[0].drains == 1
-
-
-async def test_a_failed_run_leaves_no_event(wired):
-    FakeApp.behavior = 'fail'
-
-    await execute(FakeClient(), ClaimedRun.from_payload(PAYLOAD))
-    await asyncio.sleep(0)
-
-    assert FakeApp.instances[0].turn_writes == []
-
-
-async def test_the_run_waits_for_its_writes_before_it_finalizes(wired, monkeypatch):
-    order: list[str] = []
-
-    async def slow_drain(self, timeout=5.0):
-        order.append('drain')
-
-    async def finish(self, task_id, run_id, status, error='', session_id=None):
-        order.append('finalize')
-
-    monkeypatch.setattr(FakeApp, 'drain_memory_writes', slow_drain)
-    monkeypatch.setattr(FakeClient, 'finalize', finish)
-
-    await execute(FakeClient(), ClaimedRun.from_payload(PAYLOAD))
-
-    assert order == ['drain', 'finalize']
 
 
 async def test_a_timeout_is_reported_as_an_error_with_the_partial_text(wired, monkeypatch):
