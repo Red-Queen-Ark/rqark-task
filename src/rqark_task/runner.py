@@ -241,28 +241,6 @@ async def _finalize(client: InternalClient, run: ClaimedRun, status: str, error:
         logger.exception('finalize failed run=%s', run.run_id)
 
 
-_background_writes: set[asyncio.Task] = set()
-
-
-def _record_turn(app: AgentApp, session: Session, extras: dict[str, object] | None) -> None:
-    """Record the finished task run in the background.
-
-    A scheduled run is a turn like any other and leaves the same event trail, so
-    "what did the agent do on its own" is searchable later. The state board is
-    left alone: a run is the agent working by itself, not the user's situation
-    changing.
-    """
-    if extras is None:
-        return
-    try:
-        task = asyncio.create_task(app.write_turn_memory(session_id=session.uuid, source=TASK_SOURCE, session=session, extras=extras, allow_state_update=False))
-    except RuntimeError:
-        logger.warning('no running loop, the run was not recorded run session=%s', session.uuid)
-        return
-    _background_writes.add(task)
-    task.add_done_callback(_background_writes.discard)
-
-
 async def execute(client: InternalClient, run: ClaimedRun) -> None:
     status = RUN_OK
     error = ''
@@ -281,7 +259,6 @@ async def execute(client: InternalClient, run: ClaimedRun) -> None:
         session = await app.session_mgr.get_or_create(run.session_id)
         session.title = run.task_name
         await asyncio.wait_for(app.chat(run.prompt, agent, session_id=run.session_id, extras=extras), TASK_RUN_TIMEOUT)
-        _record_turn(app, session, extras)
     except RunnerError as failure:
         status, error = RUN_ERROR, failure.reason
     except TimeoutError:
@@ -303,8 +280,6 @@ async def execute(client: InternalClient, run: ClaimedRun) -> None:
                         await _save_transcript(storage, run, stream.text)
                     except Exception:
                         logger.exception('cannot save the partial transcript run=%s', run.run_id)
-                if app is not None:
-                    await app.drain_memory_writes()
                 await _finalize(client, run, status, error)
             finally:
                 await _close_client(extras)

@@ -21,7 +21,7 @@ The worker stops on `SIGINT` or `SIGTERM`, cancelling every in-flight run and fi
 1. `LeaderLease` holds a Redis key so one process claims at a time across all workers.
 2. `TaskLoop` claims up to `TASK_CONCURRENCY` runs from the data cloud on every tick.
 3. `execute` builds the agent and provider from the claimed definitions, opens the workspace when sandboxing is on, runs the prompt, and reports `ok`, `error`, `timeout` or `cancelled` back to the data cloud.
-4. The run's transcript is saved when it fails, and the turn is recorded in the background when it succeeds.
+4. The run's transcript is saved when it fails. A successful run leaves no memory row: a run token only reaches its own session, so `RQARK_MEMORY_AUTO_WRITE` is off here.
 
 ## Layout
 
@@ -48,6 +48,7 @@ The worker stops on `SIGINT` or `SIGTERM`, cancelling every in-flight run and fi
 | `REDIS_URL` | `redis://localhost:6379/0` | where the leader lease lives |
 | `SANDBOX_ENABLED` | `true` | run the agent inside a workspace container |
 | `SANDBOX_IMAGE` | `ubuntu:24.04` | image for that container |
+| `RQARK_MEMORY_AUTO_WRITE` | `0` in this service | whether a finished run is recorded in memory; a run token only reaches its own session, so the writer cannot read the account switches and its writes are refused |
 | `WORKSPACE_START_TIMEOUT` | `30` | how long a container may take to start |
 | `WORKSPACE_MAX_BYTES` | `104857600` | largest file the workspace reads or writes |
 | `WORKSPACE_SHELL_MAX_BYTES` | `8388608` | stdout and stderr cap for one shell call |

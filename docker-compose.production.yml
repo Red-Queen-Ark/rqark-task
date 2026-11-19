@@ -6,6 +6,7 @@ services:
     environment:
       - DATA_CLOUD_URL=http://server:7302
       - REDIS_SERVER=redis
+      - RQARK_MEMORY_AUTO_WRITE=${RQARK_MEMORY_AUTO_WRITE:-0}
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-}
       - TASK_TICK_SECONDS=${TASK_TICK_SECONDS:-30}
       - TASK_CONCURRENCY=${TASK_CONCURRENCY:-1}
