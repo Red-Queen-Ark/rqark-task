@@ -1,0 +1,32 @@
+services:
+  task:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      - DATA_CLOUD_URL=http://server:7302
+      - REDIS_SERVER=redis
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-}
+      - TASK_TICK_SECONDS=${TASK_TICK_SECONDS:-30}
+      - TASK_CONCURRENCY=${TASK_CONCURRENCY:-1}
+      - TASK_LEADER_TTL=${TASK_LEADER_TTL:-60}
+      - TASK_RUN_TIMEOUT=${TASK_RUN_TIMEOUT:-600}
+      - TASK_STREAM_MAX_CHARS=${TASK_STREAM_MAX_CHARS:-200000}
+      - SANDBOX_ENABLED=${SANDBOX_ENABLED:-true}
+      - SANDBOX_IMAGE=${SANDBOX_IMAGE:-ubuntu:24.04}
+      - WORKSPACE_MAX_BYTES=${WORKSPACE_MAX_BYTES:-104857600}
+      - WORKSPACE_START_TIMEOUT=${WORKSPACE_START_TIMEOUT:-30}
+      - WORKSPACE_SHELL_MAX_BYTES=${WORKSPACE_SHELL_MAX_BYTES:-8388608}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    mem_limit: ${MEM_LIMIT:-2g}
+    container_name: ${PROJECT_NAME}-task
+    networks:
+      - rqark-project
+    stop_grace_period: 90s
+    restart: unless-stopped
+
+networks:
+  rqark-project:
+    name: rqark-project
+    external: true
