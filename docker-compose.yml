@@ -1,0 +1,19 @@
+services:
+  task:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: ${PROJECT_NAME}-task
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    env_file:
+      - ./.env
+    environment:
+      - DATA_CLOUD_URL=${DATA_CLOUD_URL_DOCKER:-http://host.docker.internal:7302}
+      - REDIS_SERVER=${REDIS_SERVER_DOCKER:-host.docker.internal}
+      - SANDBOX_IMAGE=${SANDBOX_IMAGE:-ubuntu:24.04}
+      - WORKSPACE_START_TIMEOUT=${WORKSPACE_START_TIMEOUT:-30}
+    stop_grace_period: 90s
+    restart: unless-stopped
