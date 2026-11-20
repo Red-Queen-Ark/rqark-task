@@ -58,6 +58,7 @@ python-platform = "all"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 markers = []
 filterwarnings = ["default"]

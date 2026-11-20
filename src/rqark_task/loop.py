@@ -66,6 +66,9 @@ class TaskLoop:
                 await run
             except (asyncio.CancelledError, Exception):
                 pass
+        close = getattr(self.client, 'aclose', None)
+        if close is not None:
+            await close()
         await self._lease.stop()
         logger.info('task loop stopped')
 

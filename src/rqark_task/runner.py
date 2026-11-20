@@ -16,6 +16,7 @@ from rqark_sandbox import swap_agent
 from rqark_sandbox.workspace import Workspace
 
 from rqark_task.config import DATA_CLOUD_TIMEOUT, DATA_CLOUD_URL, INTERNAL_TOKEN, SANDBOX_ENABLED, SANDBOX_IMAGE, TASK_RUN_TIMEOUT, TASK_STREAM_MAX_CHARS, WORKSPACE_START_TIMEOUT
+from rqark_task.memory import release_memory
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ class InternalClient:
         self.url = url.rstrip('/')
         self.token = token
         self.timeout = timeout
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def api_url(self) -> str:
@@ -74,20 +76,34 @@ class InternalClient:
     def _headers(self) -> dict[str, str]:
         return {'X-Internal-Token': self.token}
 
+    def _http(self) -> httpx.AsyncClient:
+        """The one pool this client keeps, instead of one per call.
+
+        A tick builds an HTTP client, a pool and its buffers, then throws them
+        away, and the next tick does it again; on a worker that idles at one
+        claim every thirty seconds that churn is the whole steady-state cost.
+        """
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
+
+    async def aclose(self) -> None:
+        client, self._client = self._client, None
+        if client is not None:
+            await client.aclose()
+
     async def claim(self, limit: int) -> list[ClaimedRun]:
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(f'{self.api_url}/internal/tasks/claim', json={'limit': limit}, headers=self._headers())
-            response.raise_for_status()
-            body = response.json()
+        response = await self._http().post(f'{self.api_url}/internal/tasks/claim', json={'limit': limit}, headers=self._headers())
+        response.raise_for_status()
+        body = response.json()
         return [ClaimedRun.from_payload(item) for item in body.get('runs') or []]
 
     async def finalize(self, task_id: str, run_id: str, status: str, error: str = '', session_id: str | None = None) -> None:
         payload: dict[str, Any] = {'status': status, 'error': error}
         if session_id is not None:
             payload['session_id'] = session_id
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.patch(f'{self.api_url}/internal/tasks/{task_id}/runs/{run_id}', json=payload, headers=self._headers())
-            response.raise_for_status()
+        response = await self._http().patch(f'{self.api_url}/internal/tasks/{task_id}/runs/{run_id}', json=payload, headers=self._headers())
+        response.raise_for_status()
 
 
 class LocalStream:
@@ -106,6 +122,11 @@ class LocalStream:
     @property
     def text(self) -> str:
         return ''.join(self._chunks)
+
+    def drop(self) -> None:
+        """Drops the kept prefix once the transcript has been written."""
+        self._chunks.clear()
+        self._size = 0
 
     def _append(self, text: str) -> None:
         if self._max <= 0:
@@ -284,7 +305,11 @@ async def execute(client: InternalClient, run: ClaimedRun) -> None:
             finally:
                 await _close_client(extras)
 
-        await _run_to_completion(close_out())
+        try:
+            await _run_to_completion(close_out())
+        finally:
+            stream.drop()
+            release_memory()
 
     if cancelled:
         raise asyncio.CancelledError
@@ -292,7 +317,12 @@ async def execute(client: InternalClient, run: ClaimedRun) -> None:
 
 async def run_once(limit: int = 1) -> int:
     client = InternalClient()
-    runs = await client.claim(limit)
-    for run in runs:
-        await execute(client, run)
-    return len(runs)
+    try:
+        runs = await client.claim(limit)
+        for run in runs:
+            await execute(client, run)
+        return len(runs)
+    finally:
+        close = getattr(client, 'aclose', None)
+        if close is not None:
+            await close()
