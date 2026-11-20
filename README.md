@@ -16,6 +16,22 @@ A tag on `main` deploys through `docker-compose.production.yml`. Locally, `pytho
 
 The worker stops on `SIGINT` or `SIGTERM`, cancelling every in-flight run and finalizing it before exiting.
 
+## One shot
+
+```bash
+docker compose run --rm task --once
+```
+
+`--once` claims one batch, runs it and exits instead of staying up. A schedule of a few runs a day does not need a process that lives all day, and a fresh process cannot carry the peak of yesterday's run: the resident size of a long-lived worker after one run stays at that run's high-water mark, which is the whole footprint of a service that idles at `0.00%` CPU.
+
+`--limit` sets how many runs that batch claims (default `1`). The production stack takes it from a timer:
+
+```
+*/15 * * * * cd /srv/rqark-task && docker compose -f docker-compose.production.yml run --rm task --once
+```
+
+Each run also releases what it used: the run's HTTP pool is closed, its transcript buffer dropped, and the freed heap handed back to the kernel (`malloc_trim`, glibc only). At startup the collector has its import-time objects frozen, so a collection never walks the dependency tree again.
+
 ## How a run flows
 
 1. `LeaderLease` holds a Redis key so one process claims at a time across all workers.
@@ -32,6 +48,7 @@ The worker stops on `SIGINT` or `SIGTERM`, cancelling every in-flight run and fi
 | `src/rqark_task/loop.py` | the claim tick and its in-flight runs |
 | `src/rqark_task/leader.py` | the Redis lease that elects one claiming worker |
 | `src/rqark_task/config.py` | environment variables |
+| `src/rqark_task/memory.py` | returns a finished run's heap to the kernel |
 
 ## Configuration
 

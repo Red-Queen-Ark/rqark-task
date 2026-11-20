@@ -411,3 +411,74 @@ def test_the_local_stream_keeps_everything_under_its_limit():
 
     assert stream.text == 'abcdef'
     assert stream.truncated is False
+
+
+async def test_a_finished_run_releases_its_memory(wired, monkeypatch):
+    released: list[int] = []
+    monkeypatch.setattr(runner_module, 'release_memory', lambda: released.append(1))
+
+    await execute(FakeClient(), ClaimedRun.from_payload(PAYLOAD))
+
+    assert released == [1]
+
+
+async def test_a_run_releases_its_memory_even_when_the_cleanup_fails(wired, monkeypatch):
+    released: list[int] = []
+
+    async def broken_cleanup(coro):
+        coro.close()
+        raise RuntimeError('finalize is broken')
+
+    monkeypatch.setattr(runner_module, '_run_to_completion', broken_cleanup)
+    monkeypatch.setattr(runner_module, 'release_memory', lambda: released.append(1))
+
+    with pytest.raises(RuntimeError):
+        await execute(FakeClient(), ClaimedRun.from_payload(PAYLOAD))
+
+    assert released == [1]
+
+
+def test_a_dropped_stream_keeps_nothing():
+    stream = runner_module.LocalStream(max_chars=100)
+
+    stream._append('half an answer')
+    stream.drop()
+
+    assert stream.text == ''
+
+
+def test_the_internal_client_keeps_one_pool():
+    client = InternalClient(url='http://data-cloud:7302', token='shared-secret')
+
+    assert client._http() is client._http()
+
+
+async def test_closing_the_internal_client_closes_its_pool_and_rebuilds_it():
+    client = InternalClient(url='http://data-cloud:7302', token='shared-secret')
+    pool = client._http()
+
+    await client.aclose()
+
+    assert pool.is_closed is True
+    assert client._http() is not pool
+
+
+async def test_closing_the_internal_client_twice_is_harmless():
+    client = InternalClient(url='http://data-cloud:7302', token='shared-secret')
+
+    await client.aclose()
+    await client.aclose()
+
+
+async def test_run_once_closes_its_client(monkeypatch):
+    closed: list[int] = []
+
+    class CountingClient(FakeClient):
+        async def aclose(self):
+            closed.append(1)
+
+    monkeypatch.setattr(runner_module, 'InternalClient', CountingClient)
+
+    await runner_module.run_once(1)
+
+    assert closed == [1]
