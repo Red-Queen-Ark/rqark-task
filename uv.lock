@@ -1434,7 +1434,7 @@ wheels = [
 
 [[package]]
 name = "rqark-task"
-version = "0.1.2"
+version = "0.1.4"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
