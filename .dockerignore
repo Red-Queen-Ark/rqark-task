@@ -1,6 +1,6 @@
 .git
 .gitignore
-.gitea
+.github
 .venv
 .Python
 .vscode
