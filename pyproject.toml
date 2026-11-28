@@ -11,9 +11,9 @@ keywords = ["agent", "task", "scheduler", "worker"]
 dependencies = [
     "httpx>=0.28.1",
     "redis[hiredis]>=5.2.0",
-    "rqark-app==0.13.1",
-    "rqark-core==0.5.3",
-    "rqark-sandbox==0.1.0",
+    "rqark-app==0.13.7",
+    "rqark-core==0.5.5",
+    "rqark-sandbox==0.1.1",
 ]
 
 [build-system]
