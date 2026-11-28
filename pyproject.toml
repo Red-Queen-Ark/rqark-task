@@ -1,6 +1,6 @@
 [project]
 name = "rqark-task"
-version = "0.1.5"
+version = "0.1.6"
 description = "Red Queen Ark Task - a worker service that claims scheduled agent runs from the data cloud and executes them"
 readme = "README.md"
 license = "MIT"
